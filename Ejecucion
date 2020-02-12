@@ -1,0 +1,80 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.style as style
+import seaborn as sns
+import matplotlib.image as mpimg
+from scipy.stats import gaussian_kde
+import imageio
+from os import listdir
+from os.path import isfile, join
+
+
+ruta_datos = 'D:\\Datos\\Datos\\Accidentalidad georeferenciacion\\'
+archivos = [_ for _ in listdir(ruta_datos) if isfile(join(ruta_datos, _))]
+datos = [pd.read_csv(ruta_datos + f, low_memory = False) for f in archivos]
+
+numero_dataset = 5
+dataset = datos[numero_dataset]
+dias = set(datos[numero_dataset].DIA_NOMBRE)
+
+# Cambiar la hora a formato hora
+from datetime import datetime
+from datetime import time
+
+def cambiar_hora(string):
+    if string[-5:] == 'a. m.':
+        return datetime.strptime(string[:-6], "%H:%M:%S").time()
+    elif string[-5:] == 'p. m.':
+        try:
+            return datetime.strptime(str(int(string[:2]) + 12) + ':' + string[3:5] + ':' + '00', "%H:%M:%S").time()
+        except ValueError:
+            return time(0,0)
+            
+def asociar_intervalo(fecha):
+    diccionario = dict(zip(range(24), [f'{x} - {x+1}' for x in range(24)]))
+    return diccionario[fecha.hour]
+        
+dataset["HORA2"] = dataset.HORA.map(cambiar_hora)
+dataset["INTERVALO"] = dataset.HORA2.map(asociar_intervalo)
+
+dataset2 = dataset[dataset.DIA_NOMBRE == 'LUNES    ']
+
+diccionario = dict(zip(range(24), [f'{x} - {x+1}' for x in range(24)]))
+medellin_img = mpimg.imread('D:\\Datos\\Mapa_intento.png')
+kwargs = {'levels': np.arange(0, 5.5/10**8, 0.01/10**8)}
+imagenes = []
+
+for x in range(24):
+    rango = diccionario[x]
+    datos_grafica = dataset2[dataset2["INTERVALO"] == rango]
+    
+    x = np.append(np.array(datos_grafica.X), min(dataset2.X))
+    y = np.append(np.array(datos_grafica.Y), min(dataset2.Y))
+    
+    plt.style.use(["seaborn"])
+    plt.figure(figsize = (15,13))
+    
+    calor = sns.kdeplot(x, y, n_levels = 10, 
+                    cmap = 'OrRd',
+                    cbar = True, 
+                    shade = True, 
+                    shade_lowest = True, 
+                    alpha = 1,
+                    cbar_kws={'label': 'Densidad'},
+                    **kwargs)
+
+    plt.imshow(medellin_img, extent = [min(dataset2.X), max(dataset2.X), min(dataset2.Y), max(dataset2.Y)], zorder = 1)
+    
+    plt.xlim(min(dataset2.X), max(dataset2.X))
+    plt.ylim(min(dataset2.Y), max(dataset2.Y))
+    
+    plt.title("Distribución de accidentes en Medellín un lunes del 2019 \n Hora: " + rango, fontsize = 15)
+    plt.xticks([])
+    plt.yticks([])
+    plt.show()
+    figure = calor.get_figure()
+    figure.savefig("C:\\Users\\USER\\Desktop\\Horas\\" + rango + ".png")
+    imagenes.append(imageio.imread("C:\\Users\\USER\\Desktop\\Horas\\" + rango + ".png"))
+    
+imageio.mimsave('C:\\Users\\USER\\Desktop\\Horas\\dist_lunes.gif', imagenes, duration = 0.7)
